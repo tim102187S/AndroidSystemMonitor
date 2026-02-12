@@ -25,7 +25,7 @@ jobs:
         run: npm install
 
       - name: 🛠 Prebuild
-        run: npx expo prebuild --platform android
+        run: npx expo prebuild --platform android --clean
 
       - name: 🔧 Fix Kotlin Version
         run: |

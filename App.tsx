@@ -3,7 +3,7 @@ import { StyleSheet, View, ScrollView, SafeAreaView, Platform, RefreshControl, u
 import { 
   Text, Card, Title, ProgressBar, MD3Colors, 
   Provider as PaperProvider, MD3DarkTheme, MD3LightTheme,
-  IconButton, List, Modal, Portal, Button, Divider, TextInput
+  IconButton, List, Modal, Portal, Button, Divider, TextInput, Paragraph
 } from 'react-native-paper';
 import * as Battery from 'expo-battery';
 import * as Haptics from 'expo-haptics';
