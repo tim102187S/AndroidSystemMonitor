@@ -27,6 +27,10 @@ jobs:
       - name: 🛠 Prebuild
         run: npx expo prebuild --platform android
 
+      - name: 📦 Bundle Assets
+        run: |
+          npx expo export:embed --platform android --dev false --entry-file index.js --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/src/main/res/
+
       - name: 🤖 Build APK
         run: |
           cd android
