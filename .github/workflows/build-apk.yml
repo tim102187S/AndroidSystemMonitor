@@ -30,6 +30,7 @@ jobs:
       - name: 🔧 Fix Kotlin Version
         run: |
           sed -i 's/kotlinVersion = .*/kotlinVersion = "1.9.24"/' android/build.gradle
+          sed -i 's/kotlinVersion = .*/kotlinVersion = "1.9.24"/' android/app/build.gradle || true
 
       - name: 📦 Bundle Assets
         run: |
