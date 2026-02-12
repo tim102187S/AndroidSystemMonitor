@@ -9,7 +9,6 @@ import * as Battery from 'expo-battery';
 import * as Haptics from 'expo-haptics';
 import * as Notifications from 'expo-notifications';
 import { Pedometer } from 'expo-sensors';
-import { Camera } from 'expo-camera';
 import * as Location from 'expo-location';
 import DeviceInfo from 'react-native-device-info';
 import NetInfo from '@react-native-community/netinfo';
@@ -52,7 +51,6 @@ export default function App() {
   
   const [currentStepCount, setCurrentStepCount] = useState(0);
   const [stepGoal, setStepGoal] = useState(6000);
-  const [torchOn, setTorchOn] = useState(false);
 
   const theme = isDarkMode ? MD3DarkTheme : MD3LightTheme;
 
@@ -61,7 +59,6 @@ export default function App() {
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') return;
       let location = await Location.getCurrentPositionAsync({});
-      // 這裡模擬 API 請求 (實際開發可串接 OpenWeatherMap)
       setWeather({ temp: '24°C', desc: '晴時多雲', city: '目前所在地' });
     } catch (e) {}
   };
@@ -70,11 +67,9 @@ export default function App() {
     try {
       const bLevel = await Battery.getBatteryLevelAsync();
       const bState = await Battery.getBatteryStateAsync();
-      
       const start = new Date(); start.setHours(0, 0, 0, 0);
       const stepResult = await Pedometer.getStepCountAsync(start, new Date());
       setCurrentStepCount(stepResult.steps);
-
       const totalDisk = await DeviceInfo.getTotalDiskCapacity();
       const freeDisk = await DeviceInfo.getFreeDiskStorage();
       const totalMem = await DeviceInfo.getTotalMemory();
@@ -83,7 +78,6 @@ export default function App() {
       const ip = await DeviceInfo.getIpAddress();
       const ssid = await DeviceInfo.getSsid();
       const uptimeMs = await DeviceInfo.getUptime();
-
       setBattery({ level: bLevel, state: bState });
       setStorage({ total: totalDisk, free: freeDisk });
       setMemory({ total: totalMem, used: usedMem });
@@ -123,13 +117,12 @@ export default function App() {
 
       <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <View style={styles.header}>
-          <Title style={{ color: theme.colors.primary, fontWeight: 'bold' }}>系統工具箱 v6.0</Title>
+          <Title style={{ color: theme.colors.primary, fontWeight: 'bold' }}>系統工具箱 v6.1</Title>
           <IconButton icon={isDarkMode ? "weather-sunny" : "weather-night"} onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); setIsDarkMode(!isDarkMode); }} />
         </View>
 
         <ScrollView contentContainerStyle={styles.scrollContent} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setRefreshing(true); await fetchData(); setRefreshing(false); }} />}>
           
-          {/* 天氣卡片 */}
           <Card style={[styles.card, {backgroundColor: isDarkMode ? '#1e293b' : '#e0f2fe'}]}>
             <Card.Content style={styles.weatherRow}>
               <View>
@@ -143,14 +136,9 @@ export default function App() {
             </Card.Content>
           </Card>
 
-          {/* 快捷工具 */}
           <Card style={styles.card}>
             <Card.Content>
               <View style={styles.toolRow}>
-                <View style={styles.toolItem}>
-                  <IconButton icon={torchOn ? "flashlight" : "flashlight-off"} mode="contained" containerColor={torchOn ? MD3Colors.warning80 : MD3Colors.surfaceVariant} size={28} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy); setTorchOn(!torchOn); }} />
-                  <Text variant="labelSmall">手電筒</Text>
-                </View>
                 <View style={styles.toolItem}>
                   <IconButton icon="wifi-cog" mode="outlined" size={28} onPress={() => Linking.sendIntent('android.settings.WIFI_SETTINGS')} />
                   <Text variant="labelSmall">Wi-Fi</Text>
@@ -163,12 +151,14 @@ export default function App() {
                   <IconButton icon="information-outline" mode="outlined" size={28} onPress={() => setVisible(true)} />
                   <Text variant="labelSmall">詳情</Text>
                 </View>
+                <View style={styles.toolItem}>
+                  <IconButton icon="refresh" mode="outlined" size={28} onPress={() => fetchData()} />
+                  <Text variant="labelSmall">重新整理</Text>
+                </View>
               </View>
-              {torchOn && <Camera style={{height: 0, width: 0}} flashMode={'torch'} />}
             </Card.Content>
           </Card>
 
-          {/* 健康與計步 */}
           <Card style={styles.card}>
             <Card.Content>
               <View style={styles.donutContainer}>
@@ -181,7 +171,6 @@ export default function App() {
             </Card.Content>
           </Card>
 
-          {/* 資源與電力 */}
           <Card style={styles.card}>
             <Card.Content>
               <View style={styles.donutContainer}>
@@ -193,7 +182,7 @@ export default function App() {
             </Card.Content>
           </Card>
 
-          <Text style={styles.footer}>* 系統工具箱 v6.0 - 終極大滿貫版</Text>
+          <Text style={styles.footer}>* v6.1 已暫時移除手電筒以確保穩定性</Text>
         </ScrollView>
       </SafeAreaView>
     </PaperProvider>
