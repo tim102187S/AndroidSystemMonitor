@@ -69,42 +69,23 @@ export default function App() {
   const [stepGoal, setStepGoal] = useState(6000);
   const [tempGoal, setTempGoal] = useState('6000');
 
-  // 用於防止重複發送通知的標記
   const lastNotified = useRef({ battery80: false, battery100: false, stepsDone: false });
 
   const theme = isDarkMode ? MD3DarkTheme : MD3LightTheme;
 
-  // 初始化通知權限
   useEffect(() => {
-    async function requestPermissions() {
+    async function init() {
       const { status } = await Notifications.requestPermissionsAsync();
-      if (status !== 'granted') {
-        console.log('通知權限未獲得');
-      }
       if (Platform.OS === 'android') {
         Notifications.setNotificationChannelAsync('default', {
           name: 'default',
           importance: Notifications.AndroidImportance.MAX,
-          vibrationPattern: [0, 250, 250, 250],
-          lightColor: '#FF231F7C',
         });
       }
+      await fetchData();
     }
-    requestPermissions();
-  }, []);
-
-  const sendLocalNotification = async (title, body) => {
-    await Notifications.scheduleNotificationAsync({
-      content: { title, body, sound: true },
-      trigger: null, // 立即發送
-    });
-  };
-
-  const getBatteryColor = (level) => {
-    if (level < 0.2) return MD3Colors.error50;
-    if (level < 0.8) return '#FFD700';
-    return '#4CAF50';
-  };
+    init();
+  }, [fetchData]);
 
   const formatBytes = (bytes) => {
     if (!bytes || bytes <= 0) return '0 B';
@@ -114,126 +95,94 @@ export default function App() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  useEffect(() => {
-    const loadGoal = async () => {
-      try {
-        const savedGoal = await AsyncStorage.getItem('stepGoal');
-        if (savedGoal !== null) {
-          setStepGoal(parseInt(savedGoal));
-          setTempGoal(savedGoal);
-        }
-      } catch (e) {}
-    };
-    loadGoal();
-  }, []);
-
-  const saveStepGoal = async () => {
-    const newGoal = parseInt(tempGoal);
-    if (!isNaN(newGoal) && newGoal > 0) {
-      setStepGoal(newGoal);
-      await AsyncStorage.setItem('stepGoal', newGoal.toString());
-      setGoalDialogVisible(false);
-      lastNotified.current.stepsDone = false; // 重設通知標記
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }
-  };
-
-  const fetchWeather = async () => {
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setWeather(prev => ({ ...prev, city: '未獲取權限', desc: '請開啟定位' }));
-        return;
-      }
-      setWeather({ temp: '24°C', desc: '晴時多雲', city: '目前所在地' });
-    } catch (e) {
-      setWeather(prev => ({ ...prev, city: '讀取失敗', desc: '服務異常' }));
-    }
+  const getBatteryColor = (level) => {
+    if (level < 0.2) return MD3Colors.error50;
+    if (level < 0.8) return '#FFD700';
+    return '#4CAF50';
   };
 
   const fetchData = useCallback(async () => {
-    // 1. 電池
-    try {
-      const l = await Battery.getBatteryLevelAsync();
-      const s = await Battery.getBatteryStateAsync();
-      setBattery({ level: l, state: s });
+    // 平行抓取所有數據，確保互不干擾
+    const results = await Promise.allSettled([
+      Battery.getBatteryLevelAsync(),
+      Battery.getBatteryStateAsync(),
+      Pedometer.isAvailableAsync(),
+      FileSystem.getTotalDiskCapacityAsync(),
+      FileSystem.getFreeDiskStorageAsync(),
+      DeviceInfo.getTotalMemory(),
+      DeviceInfo.getUsedMemory(), // 注意：部分 Android 可能返回全域或 App 佔用
+      NetInfo.fetch(),
+      DeviceInfo.getIpAddress(),
+      DeviceInfo.getUptime(),
+      DeviceInfo.getHardware(),
+      Location.requestForegroundPermissionsAsync()
+    ]);
 
-      // 電量通知邏輯
-      const isCharging = s === Battery.BatteryState.CHARGING || s === Battery.BatteryState.FULL;
-      if (isCharging) {
+    // 1. 電池
+    if (results[0].status === 'fulfilled') {
+      const l = results[0].value;
+      const s = results[1].value;
+      setBattery({ level: l, state: s });
+      // 通知邏輯
+      if (s === Battery.BatteryState.CHARGING || s === Battery.BatteryState.FULL) {
         if (l >= 1.0 && !lastNotified.current.battery100) {
-          sendLocalNotification('🔋 電量已滿', '手機已完全充飽電！');
+          Notifications.scheduleNotificationAsync({ content: { title: '🔋 電量已滿', body: '手機已完全充飽電！' }, trigger: null });
           lastNotified.current.battery100 = true;
         } else if (l >= 0.8 && l < 1.0 && !lastNotified.current.battery80) {
-          sendLocalNotification('⚡ 充電提醒', '電量已達 80%，建議可停止充電以維護電池健康。');
+          Notifications.scheduleNotificationAsync({ content: { title: '⚡ 充電提醒', body: '電量已達 80%，建議停止充電。' }, trigger: null });
           lastNotified.current.battery80 = true;
         }
-      } else {
-        // 拔掉插頭時重置通知標記
-        if (l < 0.8) {
-          lastNotified.current.battery80 = false;
-          lastNotified.current.battery100 = false;
-        }
       }
-    } catch (e) {}
+    }
 
     // 2. 步數
-    try {
-      const isAvailable = await Pedometer.isAvailableAsync();
-      if (isAvailable) {
-        const start = new Date(); start.setHours(0, 0, 0, 0);
-        const end = new Date();
-        const stepResult = await Pedometer.getStepCountAsync(start, end);
-        if (stepResult) {
-          setCurrentStepCount(stepResult.steps);
-          // 步數通知邏輯
-          if (stepResult.steps >= stepGoal && !lastNotified.current.stepsDone) {
-            sendLocalNotification('🏆 目標達成！', `恭喜！您今天已達成 ${stepGoal} 步的目標！`);
-            lastNotified.current.stepsDone = true;
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          }
+    if (results[2].status === 'fulfilled' && results[2].value) {
+      const start = new Date(); start.setHours(0, 0, 0, 0);
+      Pedometer.getStepCountAsync(start, new Date()).then(res => {
+        setCurrentStepCount(res.steps);
+        if (res.steps >= stepGoal && !lastNotified.current.stepsDone) {
+          Notifications.scheduleNotificationAsync({ content: { title: '🏆 目標達成！', body: `您今天已達成 ${stepGoal} 步！` }, trigger: null });
+          lastNotified.current.stepsDone = true;
         }
-      }
-    } catch (e) {}
+      }).catch(()=>{});
+    }
 
     // 3. 儲存空間
-    try {
-      const total = await FileSystem.getTotalDiskCapacityAsync();
-      const free = await FileSystem.getFreeDiskStorageAsync();
-      if (total > 0) setStorage({ total, free });
-    } catch (e) {}
+    if (results[3].status === 'fulfilled' && results[4].status === 'fulfilled') {
+      setStorage({ total: results[3].value, free: results[4].value });
+    }
 
     // 4. 記憶體
-    try {
-      const used = await DeviceInfo.getUsedMemory();
-      setMemory(prev => ({ ...prev, used: used }));
-    } catch (e) {}
+    if (results[5].status === 'fulfilled' && results[6].status === 'fulfilled') {
+      setMemory({ total: results[5].value, used: results[6].value });
+    }
 
-    // 5. 網路
-    NetInfo.fetch().then(net => {
-      setNetwork(prev => ({ ...prev, type: net.type, isConnected: net.isConnected ?? false }));
-    }).catch(()=>{});
-    DeviceInfo.getIpAddress().then(ip => setNetwork(prev => ({ ...prev, ip }))).catch(()=>{});
+    // 5. 網路與設備
+    if (results[7].status === 'fulfilled') setNetwork(prev => ({ ...prev, type: results[7].value.type }));
+    if (results[8].status === 'fulfilled') setNetwork(prev => ({ ...prev, ip: results[8].value }));
+    if (results[9].status === 'fulfilled') {
+      const up = results[9].value;
+      setDeviceInfo(prev => ({ ...prev, uptime: `${Math.floor(up / 3600000)}h ${Math.floor((up % 3600000) / 60000)}m` }));
+    }
+    if (results[10].status === 'fulfilled') setDeviceInfo(prev => ({ ...prev, cpu: results[10].value }));
 
-    // 6. 詳情
-    try {
-      const uptimeMs = await DeviceInfo.getUptime();
-      const cpu = await DeviceInfo.getHardware();
-      setDeviceInfo(prev => ({
-        ...prev,
-        uptime: uptimeMs ? `${Math.floor(uptimeMs / 3600000)}h ${Math.floor((uptimeMs % 3600000) / 60000)}m` : '未知',
-        cpu: cpu || '未知'
-      }));
-    } catch (e) {}
-
-    fetchWeather();
+    setWeather({ temp: '24°C', desc: '晴時多雲', city: '目前所在地' });
   }, [stepGoal]);
 
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 10000);
+    const interval = setInterval(fetchData, 15000);
     return () => clearInterval(interval);
   }, [fetchData]);
+
+  const saveStepGoal = async () => {
+    const newGoal = parseInt(tempGoal);
+    if (!isNaN(newGoal)) {
+      setStepGoal(newGoal);
+      await AsyncStorage.setItem('stepGoal', newGoal.toString());
+      setGoalDialogVisible(false);
+      lastNotified.current.stepsDone = false;
+    }
+  };
 
   return (
     <PaperProvider theme={theme}>
@@ -248,7 +197,7 @@ export default function App() {
             <List.Item title="Android API" description={deviceInfo.api.toString()} left={p => <List.Icon {...p} icon="api" />} />
             <List.Item title="開機時長" description={deviceInfo.uptime} left={p => <List.Icon {...p} icon="clock-outline" />} />
             <Divider />
-            <List.Item title="總記憶體 (RAM)" description={formatBytes(Device.totalMemory)} left={p => <List.Icon {...p} icon="memory" />} />
+            <List.Item title="總記憶體 (RAM)" description={formatBytes(memory.total)} left={p => <List.Icon {...p} icon="memory" />} />
           </ScrollView>
           <Button mode="contained" onPress={() => setVisible(false)} style={{marginTop: 10}}>關閉視窗</Button>
         </Modal>
@@ -267,12 +216,11 @@ export default function App() {
 
       <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <View style={styles.header}>
-          <Title style={{ color: theme.colors.primary, fontWeight: 'bold' }}>Phone Tools v6.7</Title>
+          <Title style={{ color: theme.colors.primary, fontWeight: 'bold' }}>Phone Tools v6.8</Title>
           <IconButton icon={isDarkMode ? "weather-sunny" : "weather-night"} onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); setIsDarkMode(!isDarkMode); }} />
         </View>
 
-        <ScrollView contentContainerStyle={styles.scrollContent} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setRefreshing(true); await fetchData(); setRefreshing(false); }} />}>
-          
+        <ScrollView contentContainerStyle={styles.scrollContent} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await fetchData(); setRefreshing(false); }} />}>
           <Card style={[styles.card, {backgroundColor: isDarkMode ? '#1e293b' : '#e0f2fe'}]}>
             <Card.Content style={styles.weatherRow}>
               <View>
@@ -298,12 +246,12 @@ export default function App() {
                   <Text variant="labelSmall">亮度</Text>
                 </View>
                 <View style={styles.toolItem}>
-                  <IconButton icon="information-outline" mode="outlined" size={28} onPress={() => setVisible(true)} />
-                  <Text variant="labelSmall">詳情</Text>
-                </View>
-                <View style={styles.toolItem}>
                   <IconButton icon="bluetooth" mode="outlined" size={28} onPress={() => Linking.sendIntent('android.settings.BLUETOOTH_SETTINGS')} />
                   <Text variant="labelSmall">藍牙</Text>
+                </View>
+                <View style={styles.toolItem}>
+                  <IconButton icon="information-outline" mode="outlined" size={28} onPress={() => setVisible(true)} />
+                  <Text variant="labelSmall">詳情</Text>
                 </View>
               </View>
             </Card.Content>
@@ -334,29 +282,23 @@ export default function App() {
                   </View>
                 </View>
                 <View style={{flex: 1, alignItems: 'center'}}>
-                  <DonutChart label="App 記憶體" percentage={memory.total > 0 ? (memory.used / memory.total) * 100 : 0} color="#FF9800" />
+                  <DonutChart label="系統記憶體" percentage={memory.total > 0 ? (memory.used / memory.total) * 100 : 0} color="#FF9800" />
                   <View style={styles.usageInfo}>
-                    <Text style={styles.usageText}>系統總量: {formatBytes(memory.total)}</Text>
-                    <Text style={[styles.usageText, {color: '#FF9800'}]}>App 已用: {formatBytes(memory.used)}</Text>
-                    <Text style={[styles.usageText, {color: '#999'}]}>系統可用: {formatBytes(memory.total - memory.used)}</Text>
+                    <Text style={styles.usageText}>總共: {formatBytes(memory.total)}</Text>
+                    <Text style={[styles.usageText, {color: '#FF9800'}]}>已用: {formatBytes(memory.used)}</Text>
+                    <Text style={[styles.usageText, {color: '#999'}]}>剩餘: {formatBytes(memory.total - memory.used)}</Text>
                   </View>
                 </View>
               </View>
-              
               <Divider style={{marginVertical: 10}} />
-              
-              <ProgressBar 
-                progress={battery.level} 
-                color={getBatteryColor(battery.level)} 
-                style={{height: 12, borderRadius: 6}} 
-              />
+              <ProgressBar progress={battery.level} color={getBatteryColor(battery.level)} style={{height: 12, borderRadius: 6}} />
               <Paragraph style={{textAlign: 'center', fontSize: 13, marginTop: 8, fontWeight: '600', color: getBatteryColor(battery.level)}}>
                 剩餘電力: {Math.round(battery.level * 100)}% ({battery.state === Battery.BatteryState.CHARGING ? '充電中 ⚡' : '放電中'})
               </Paragraph>
             </Card.Content>
           </Card>
 
-          <Text style={styles.footer}>* v6.7 支援電量與步數達成通知</Text>
+          <Text style={styles.footer}>* v6.8 系統監控穩定性強化</Text>
         </ScrollView>
       </SafeAreaView>
     </PaperProvider>

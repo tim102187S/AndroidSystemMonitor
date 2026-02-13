@@ -32,18 +32,15 @@ jobs:
           sed -i 's/kotlinVersion = .*/kotlinVersion = "1.9.24"/' android/build.gradle
           sed -i 's/kotlinVersion = .*/kotlinVersion = "1.9.24"/' android/app/build.gradle || true
 
-      - name: 📦 Bundle Assets
-        run: |
-          npx expo export:embed --platform android --dev false --entry-file index.js --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/src/main/res/
-
-      - name: 🤖 Build APK
+      - name: 🤖 Build Release APK
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug
+          # 使用 assembleRelease 產生 Release 版本
+          ./gradlew assembleRelease
 
       - name: 📤 Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: Phone-Tools-Release-APK
+          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
