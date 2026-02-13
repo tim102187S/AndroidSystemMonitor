@@ -35,8 +35,7 @@
         {
           "locationAlwaysPermission": "Allow AndroidSystemMonitor to use your location."
         }
-      ],
-      "react-native-device-info"
+      ]
     ],
     "web": {
       "favicon": "./assets/favicon.png"
