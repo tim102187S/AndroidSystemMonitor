@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "AndroidSystemMonitor",
+    "name": "Phone Tools",
     "slug": "AndroidSystemMonitor",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,8 +8,8 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
     "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
+      "image": "./assets/backgroung.png",
+      "resizeMode": "cover",
       "backgroundColor": "#ffffff"
     },
     "ios": {
@@ -17,12 +17,27 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.timshen.systemmonitor"
+      "package": "com.timshen.systemmonitor",
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.ACTIVITY_RECOGNITION"
+      ]
     },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysPermission": "Allow AndroidSystemMonitor to use your location."
+        }
+      ],
+      "react-native-device-info"
+    ],
     "web": {
       "favicon": "./assets/favicon.png"
     }
