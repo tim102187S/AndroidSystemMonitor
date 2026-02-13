@@ -27,20 +27,26 @@ jobs:
       - name: 🛠 Prebuild
         run: npx expo prebuild --platform android --clean
 
-      - name: 🔧 Fix Kotlin Version
+      - name: 🔧 Fix Kotlin & Signing Config
         run: |
+          # 修正 Kotlin 版本
           sed -i 's/kotlinVersion = .*/kotlinVersion = "1.9.24"/' android/build.gradle
-          sed -i 's/kotlinVersion = .*/kotlinVersion = "1.9.24"/' android/app/build.gradle || true
+          # 強制 Release 版本使用 Debug 簽名 (解決未簽名無法安裝與路徑問題)
+          sed -i 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/g' android/app/build.gradle || true
 
       - name: 🤖 Build Release APK
         run: |
           cd android
           chmod +x gradlew
-          # 使用 assembleRelease 產生 Release 版本
           ./gradlew assembleRelease
+
+      - name: 🔍 Check APK Location
+        run: |
+          echo "Listing APK files..."
+          find android/app/build/outputs/apk/ -name "*.apk"
 
       - name: 📤 Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Phone-Tools-Release-APK
-          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
+          path: android/app/build/outputs/apk/release/*.apk
