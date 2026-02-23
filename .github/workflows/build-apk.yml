@@ -16,8 +16,10 @@ jobs:
           node-version: 20
           cache: npm
 
+
       - name: 📦 Install dependencies
         run: npm install --no-audit --no-fund
+
 
       - name: 🔎 Expo doctor
         run: npx expo-doctor
@@ -43,6 +45,7 @@ jobs:
 
       - name: 📦 Install dependencies
         run: npm install --no-audit --no-fund
+
 
       - name: 🛠 Prebuild
         run: npx expo prebuild --platform android --clean
